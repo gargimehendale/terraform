@@ -11,18 +11,18 @@ resource "local_file" "pem_file" {
   file_permission = "400"
   sensitive_content = tls_private_key.key.private_key_pem
 }
-################################################################################
-data "aws_subnet_ids" "example"{
-vpc_id = var.vpc_id
-tags = {  Name = "*public*"  }
-}
-
 resource "aws_instance" "ec2_instance"{
-   for_each = data.aws_subnet_ids.example.ids
-   ami = "ami-016247688579884a6"
+   count = "${length(var.public_subnet_id)}"
+   ami = "ami-07bfd9965e7b972d1"
    instance_type = "t2.micro"
-   subnet_id = each.value
    associate_public_ip_address = true
    vpc_security_group_ids = [var.ec2_sg_id]
    key_name = var.key_name
+   subnet_id = "${element(var.public_subnet_id, count.index)}"
+   tags = {
+   Name = "instance0${count.index+1}"
 }
+}
+
+
+

@@ -1,4 +1,3 @@
-#AWS VPC creation#########################################################
 resource "aws_vpc" "myvpc" {
  cidr_block = var.new_cidr
  enable_dns_hostnames = true
@@ -7,52 +6,48 @@ resource "aws_vpc" "myvpc" {
  }
 }
 
-###########################  availibility zones  ####################
 data "aws_availability_zones" "zone_available" {
   state = "available"
 }
-###########################    AWS Public subnet ####################
 resource "aws_subnet" "public_subnet"{
 depends_on = [aws_vpc.myvpc]
-availability_zone = element(data.aws_availability_zones.zone_available.names,index(var.pub_cidr, each.value))
+availability_zone = element(data.aws_availability_zones.zone_available.names,count.index)
 vpc_id = var.vpc_id
-cidr_block = each.value
-for_each = toset(var.pub_cidr)
+cidr_block = element(var.pub_cidr, count.index)
+count = length(var.pub_cidr)
 tags = {
-Name = "public_Subnet${index(var.pub_cidr, each.value) + 1}"
+Name = "public_Subnet${count.index+1}"
 }
 }
 
-#################  AWS private subnet #############################
 resource "aws_subnet" "private_subnet"{
 depends_on = [aws_vpc.myvpc]
-availability_zone = element(data.aws_availability_zones.zone_available.names,index(var.priv_cidr, each.value))
+availability_zone = element(data.aws_availability_zones.zone_available.names,count.index)
 vpc_id = aws_vpc.myvpc.id
-cidr_block = each.value
-for_each = toset(var.priv_cidr)
+cidr_block = element(var.priv_cidr, count.index)
+count = length(var.priv_cidr)
 tags = {
-Name = "private_Subnet${index(var.priv_cidr, each.value) + 1}"
+Name = "private_Subnet${count.index+1}"
 }
 }
 
-####################  found private subnet id ##########################
+/*####################  found private subnet id ##########################
 data "aws_subnet_ids" "private_subnet_id"{
 depends_on = [ aws_vpc.myvpc,aws_subnet.private_subnet ]
 vpc_id = aws_vpc.myvpc.id
-tags = {  Name = "*private*"  }
+tags = {  Name = "*priv*"  }
 }
 
 ####################  found public subnet id ##########################
 data "aws_subnet_ids" "public_subnet_id"{
 depends_on = [ aws_vpc.myvpc,aws_subnet.public_subnet ]
 vpc_id = aws_vpc.myvpc.id
-tags = {  Name = "*public*"  }
+tags = {  Name = "*publ*"  }
 }
+*/
 
-
-#############################   internet gateway #########################
 resource "aws_internet_gateway" "gateway" {
-depends_on = [aws_vpc.myvpc]
+depends_on = [aws_vpc.myvpc,aws_subnet.private_subnet,aws_subnet.public_subnet]
 vpc_id = aws_vpc.myvpc.id
   tags = {
     Name = "internet_gw"
@@ -60,21 +55,18 @@ vpc_id = aws_vpc.myvpc.id
 }
 
 
-#############################  elastic ip ###############################
 resource "aws_eip" "ip"{
 vpc = true
 }
 
-######################  NAT Gateway  ###################################
 resource "aws_nat_gateway" "nat_gw" {
 allocation_id = aws_eip.ip.id
-subnet_id = element(tolist(data.aws_subnet_ids.public_subnet_id.ids),0)
+subnet_id = element(aws_subnet.public_subnet.*.id,0)
 tags = {
     Name = "NAT_gw"
   }
 }
 
-########################## public  route table ########################
 resource "aws_route_table" "rtable_public"{
 vpc_id = aws_vpc.myvpc.id
 route {
@@ -86,14 +78,12 @@ Name = "public-route-table"
 }
 }
 
-########################### public route table association  ###############
 resource "aws_route_table_association" "pub" {
-  for_each = toset(var.pub_cidr)
-  subnet_id = aws_subnet.public_subnet[each.key].id
+count = length(aws_subnet.public_subnet)
+  subnet_id = aws_subnet.public_subnet[count.index].id
   route_table_id = aws_route_table.rtable_public.id
 }
 
-###########################  private route table  ################
 resource "aws_route_table" "rtable_private"{
 vpc_id = aws_vpc.myvpc.id
 route {
@@ -105,14 +95,12 @@ Name = "private-route-table"
 }
 }
 
-##########################  private route table association ###########
 resource "aws_route_table_association" "priv" {
-  for_each = toset(var.priv_cidr)
-  subnet_id = aws_subnet.private_subnet[each.key].id
+count = length(aws_subnet.private_subnet) 
+subnet_id = aws_subnet.private_subnet[count.index].id
   route_table_id = aws_route_table.rtable_private.id
 }
 
-#################   security groups  ###########################
 resource "aws_security_group" "sg_ec2"{
  name        = "sg_allow_ssh"
  description = "Allow inbound/outbound traffic to ec2"
@@ -139,6 +127,7 @@ resource "aws_security_group" "sg_rds"{
  name        = "sg_allow_rds"
  description = "Allow inbound/outbound traffic to rds"
  vpc_id      = aws_vpc.myvpc.id
+depends_on = [aws_vpc.myvpc,aws_subnet.private_subnet,aws_subnet.public_subnet]
  ingress {
     description      = "inbound rule"
     from_port        = 5432
@@ -158,3 +147,4 @@ tags = {
 Name = "rds_sg"
 }
 }
+
