@@ -13,7 +13,7 @@ resource "local_file" "pem_file" {
 }
 resource "aws_instance" "ec2_instance"{
    count = "${length(var.public_subnet_id)}"
-   ami = "ami-07bfd9965e7b972d1"
+   ami = "ami-0aeeebd8d2ab47354"
    instance_type = "t2.micro"
    associate_public_ip_address = true
    vpc_security_group_ids = [var.ec2_sg_id]
